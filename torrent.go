@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/sha1"
 	"errors"
 	"github.com/marksamman/bencode"
 	"io"
@@ -18,13 +19,22 @@ type Torrent struct {
 	PieceLength int64
 	Pieces      string
 	File        File
+	InfoHash	[20]byte
 }
 
-func createTorrentFromDict(dict map[string]interface{}) (*Torrent, error) {
+func createTorrent(reader io.Reader) (*Torrent, error) {
+	dict, err := bencode.Decode(reader)
+	if err != nil {
+		return nil, err
+	}
+
 	info := dict["info"].(map[string]interface{})
 	if _, ok := info["length"]; !ok {
 		return nil, errors.New("multi-file torrents are not supported")
 	}
+
+	buf := bencode.Encode(info)
+	infoHash := sha1.Sum(buf)
 	
 	file := File{
 		Name:   info["name"].(string),
@@ -36,19 +46,15 @@ func createTorrentFromDict(dict map[string]interface{}) (*Torrent, error) {
 		PieceLength: info["piece length"].(int64),
 		Pieces:      info["pieces"].(string),
 		File:        file,
+		InfoHash:    infoHash,
 	}
-	
+
 	return &torrent, nil
 }
 
 // Parses the reader for the torfile file into the torfile struct
 func Parse(reader io.Reader) (*Torrent, error) {
-	dict, err := bencode.Decode(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	torrent, err := createTorrentFromDict(dict)
+	torrent, err := createTorrent(reader)
 	if err != nil {
 		return nil, err
 	}
